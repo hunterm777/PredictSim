@@ -1,0 +1,11 @@
+ts,type,side,px,sz,start,end,step,settle_fraction
+100,snapshot,bid,0.30,10,,,,
+100,snapshot,ask,0.33,5,,,,
+200,delta,bid,0.31,4,,,,
+300,delta,ask,0.32,7.5,,,,
+400,delta,bid,0.30,0,,,,
+500,delta,no_bid,0.66,3,,,,
+600,delta,ask,0.33,0,,,,
+700,snapshot,,,,,,,
+800,snapshot,bid,0.50,1,,,,
+800,snapshot,no_bid,0.45,2,,,,

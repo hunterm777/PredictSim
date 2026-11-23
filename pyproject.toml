@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "predictsim"
+version = "0.1.0"
+description = "Backtest a prediction-market strategy the way the exchange would actually have filled it."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Hunter McMillen" }]
+keywords = ["prediction markets", "backtesting", "order book", "kalshi", "polymarket", "hyperliquid"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Typing :: Typed",
+]
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+gym = ["gymnasium>=1.0"]
+parquet = ["pyarrow>=15"]
+dev = ["pytest>=8", "pytest-cov>=5", "mypy>=1.10", "ruff>=0.5", "gymnasium>=1.0", "pyarrow>=15"]
+
+[project.scripts]
+predictsim = "predictsim.cli:main"
+
+[project.urls]
+Repository = "https://github.com/hunterm777/PredictSim"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/predictsim"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+files = ["src/predictsim"]
+
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=predictsim --cov-report=term-missing --cov-fail-under=90"
+
+[tool.coverage.run]
+branch = true
+source = ["predictsim"]
