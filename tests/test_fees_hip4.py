@@ -8,12 +8,12 @@ from predictsim.fees import FeeInput, HIP4Fees
 from predictsim.fees.hip4 import deployer_factor
 
 
-def test_prd_example_rate() -> None:
-    # PRD: taker 0.0006, 4% referral discount, deployer scale 1.0 -> 0.001152
-    fees = HIP4Fees("0.0006", 0, deployer_scale="1.0", referral_discount="0.04")
-    assert fees.effective_rate(False) == Fraction("0.001152")
+def test_prd_rate_with_deployer_scale_one() -> None:
+    # PRD rate 0.0006 at deployer scale 1.0 pays 2x: 0.0012 of px x sz
+    fees = HIP4Fees("0.0006", 0, deployer_scale="1.0")
+    assert fees.effective_rate(False) == Fraction("0.0012")
     # a closing taker sell of 1,000 shares at 0.50
-    assert fees.fee(500_000, 100_000, False, True) == 576_000
+    assert fees.fee(500_000, 100_000, False, True) == 600_000
 
 
 @pytest.mark.parametrize(
@@ -44,7 +44,7 @@ def test_would_be_rebate_pays_zero_and_zero_default() -> None:
 
 
 def test_settlement_fee_uses_taker_rate() -> None:
-    fees = HIP4Fees("0.0006", 0, referral_discount="0.04")
-    assert fees.settle_fee(1_000_000, 300) == 3_456
+    fees = HIP4Fees("0.0006", 0)
+    assert fees.settle_fee(1_000_000, 300) == 3_600
     assert fees.settle_fee(0, 300) == 0
     assert fees.fresh() is fees

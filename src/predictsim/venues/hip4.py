@@ -36,7 +36,6 @@ class HIP4Profile:
     taker_rate: Number | Fraction = 0
     maker_rate: Number | Fraction = 0
     deployer_scale: Number | Fraction = "1.0"
-    referral_discount: Number | Fraction = 0
     name: str = "hip4"
     position_mode: PositionMode = PositionMode.TOKENS
     min_notional: int = 0
@@ -48,7 +47,7 @@ class HIP4Profile:
         return size > 0 and size % spec.size_step == 0
 
     def fee_model(self, spec: MarketSpec) -> HIP4Fees:
-        return HIP4Fees(self.taker_rate, self.maker_rate, self.deployer_scale, self.referral_discount)
+        return HIP4Fees(self.taker_rate, self.maker_rate, self.deployer_scale)
 
     def default_grid(self) -> Grid:
         return Grid((Band(1_000, 999_000, 10),))

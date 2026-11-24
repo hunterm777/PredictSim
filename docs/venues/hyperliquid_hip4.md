@@ -30,9 +30,10 @@ Not published, so chosen by PredictSim:
 * The base outcome rate. Hyperliquid gives no number; pass your own.
 * Rounding: fees round up to a whole micro-dollar.
 * Settlement fee: the taker rate on the settlement value (`settle_fraction × sz` for YES, `(1 − settle_fraction) × sz` for NO).
-* `referral_discount` multiplies the rate by `1 − discount`. Hyperliquid's fees page has referral discounts but does not say whether they apply to outcomes or how large they are.
 
-Checked examples: taker 0.0006, 4% referral discount, scale 1.0 → 0.001152 of px × sz (the PRD's case); an opening buy pays 0.
+Checked examples: taker 0.0006 at scale 1.0 → 0.0012 of px × sz; an opening buy pays 0.
+
+Referral and staking discounts are not modelled: Hyperliquid's fees page does not say they apply to outcome trading. The PRD's 0.001152 example included a 4% referral discount, so it is not a test here.
 
 ## Recurring BTC binaries
 

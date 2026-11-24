@@ -64,16 +64,16 @@ def test_split_merge_guards() -> None:
 
 
 def test_settlement_payout_and_hip4_fees() -> None:
-    ex, fills = make(HIP4Profile(taker_rate="0.0006", referral_discount="0.04"))
+    ex, fills = make(HIP4Profile(taker_rate="0.0006"))
     ex.on_event(BOOK, 0)
     o = ex.new_order(1, Outcome.YES, Side.BUY, 420_000, 300, OrderType.IOC)
     ex.arrive(o, 1)
     assert fills[0].fee == 0  # opening buy pays nothing
     assert ex.account.cash == 100_000_000 - 1_260_000
     ex.on_event(Settle(9, 1_000_000), 1)
-    # YES pays $1 x 3; settlement fee 0.001152 x 3 = 0.003456
-    assert ex.settlement == (9, 3_000_000, 3_456)
-    assert ex.account.cash == 100_000_000 - 1_260_000 + 3_000_000 - 3_456
+    # YES pays $1 x 3; settlement fee 2 x 0.0006 x 3 = 0.0036
+    assert ex.settlement == (9, 3_000_000, 3_600)
+    assert ex.account.cash == 100_000_000 - 1_260_000 + 3_000_000 - 3_600
     assert ex.closed
 
 
@@ -86,12 +86,12 @@ def test_fractional_settlement_pays_both_sides() -> None:
 
 
 def test_hip4_closing_sell_pays_fee() -> None:
-    ex, fills = make(HIP4Profile(taker_rate="0.0006", referral_discount="0.04"))
+    ex, fills = make(HIP4Profile(taker_rate="0.0006"))
     ex.on_event(BOOK, 0)
     ex.arrive(ex.new_order(1, Outcome.YES, Side.BUY, 420_000, 1000, OrderType.IOC), 1)
     ex.on_event(Snapshot(2, ((400_000, 1000),), ((420_000, 1000),)), 1)
     ex.arrive(ex.new_order(2, Outcome.YES, Side.SELL, 400_000, 1000, OrderType.IOC), 2)
-    assert fills[-1].fee == 4_608  # 2 x 0.0006 x 0.96 x 0.40 x 10
+    assert fills[-1].fee == 4_800  # 2 x 0.0006 x 0.40 x 10
 
 
 def test_equity_marks() -> None:

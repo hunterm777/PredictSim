@@ -41,14 +41,13 @@ class HIP4Fees:
     taker_rate: Number | Fraction
     maker_rate: Number | Fraction
     deployer_scale: Number | Fraction = "1.0"
-    referral_discount: Number | Fraction = 0
     _rates: tuple[Fraction, Fraction] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         scale = to_fraction(self.deployer_scale)
         if scale < 0:
             raise ValueError("deployer_scale must be >= 0")
-        mult = deployer_factor(scale) * (1 - to_fraction(self.referral_discount))
+        mult = deployer_factor(scale)
         taker = max(to_fraction(self.taker_rate), Fraction(0)) * mult
         maker = max(to_fraction(self.maker_rate), Fraction(0)) * mult
         object.__setattr__(self, "_rates", (taker, maker))

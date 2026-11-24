@@ -61,7 +61,7 @@ def test_polymarket_profile() -> None:
 
 
 def test_hip4_profile() -> None:
-    h = HIP4Profile(taker_rate="0.0006", referral_discount="0.04")
+    h = HIP4Profile(taker_rate="0.0006")
     spec = MarketSpec("h", h, 0, 1, h.default_grid(), 100, 100)
     assert isinstance(spec.fee_model(), HIP4Fees)
     assert h.size_ok(spec, 300) and not h.size_ok(spec, 150)
