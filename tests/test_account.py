@@ -25,12 +25,13 @@ def test_net_mode_sell_opens_no_and_buy_closes_it() -> None:
     assert acct.reserve(sell) is None
     assert acct.reserved == 6_000_000 + 170_000  # 10 NO at 0.60 + fee 0.168 rounded to 0.17
     acct.fill(sell, 400_000, 1000, False)
+    assert acct.position == -1000 and acct.net_yes == -1000  # one signed position
     assert acct.holdings == {Outcome.YES: 0, Outcome.NO: 1000}
     assert acct.cash == 10_000_000 - 6_000_000 - 170_000
     buy = order(2, Outcome.YES, Side.BUY, 420_000, 1000)
     acct.reserve(buy)
     acct.fill(buy, 420_000, 1000, False)
-    assert acct.holdings == {Outcome.YES: 0, Outcome.NO: 0}
+    assert acct.position == 0 and acct.is_flat
     # closing 10 NO by buying YES at 0.42 returns 10 x 0.58; fee 0.170520 -> 0.18 with rounding
     assert acct.cash == 3_830_000 + 5_800_000 - 180_000
     assert acct.reserved == 0
@@ -78,10 +79,10 @@ def test_settlement_payout_and_hip4_fees() -> None:
 
 def test_fractional_settlement_pays_both_sides() -> None:
     acct = Account(0, PositionMode.TOKENS, HIP4Fees(0, 0, 0))
-    acct.holdings = {Outcome.YES: 300, Outcome.NO: 100}
+    acct._tokens.update({Outcome.YES: 300, Outcome.NO: 100})
     # 3 YES x $0.25 + 1 NO x $0.75
     assert acct.settle(250_000) == (750_000 + 750_000, 0)
-    assert acct.cash == 1_500_000 and acct.holdings == {Outcome.YES: 0, Outcome.NO: 0}
+    assert acct.cash == 1_500_000 and acct.is_flat
 
 
 def test_hip4_closing_sell_pays_fee() -> None:
@@ -95,7 +96,19 @@ def test_hip4_closing_sell_pays_fee() -> None:
 
 def test_equity_marks() -> None:
     acct = Account(1_000_000, PositionMode.TOKENS, HIP4Fees(0, 0, 0))
-    acct.holdings = {Outcome.YES: 100, Outcome.NO: 50}
+    acct._tokens.update({Outcome.YES: 100, Outcome.NO: 50})
     assert acct.equity(None) == 1_000_000
     assert acct.equity(Fraction(415_000)) == 1_000_000 + 415_000 + 292_500
-    assert acct.net_yes == 50
+    assert acct.net_yes == 50 and not acct.is_flat
+
+
+def test_net_mode_settles_signed_position() -> None:
+    long_yes = Account(0, PositionMode.NET, KalshiFees())
+    long_yes.position = 300
+    assert long_yes.held(Outcome.YES) == 300 and long_yes.held(Outcome.NO) == 0
+    assert long_yes.settle(1_000_000) == (3_000_000, 0) and long_yes.is_flat
+    short = Account(0, PositionMode.NET, KalshiFees())
+    short.position = -200  # 2 NO
+    assert short.holdings == {Outcome.YES: 0, Outcome.NO: 200}
+    assert short.equity(Fraction(400_000)) == 1_200_000
+    assert short.settle(0) == (2_000_000, 0) and short.cash == 2_000_000

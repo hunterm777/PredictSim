@@ -7,8 +7,9 @@ that would overdraw available cash is rejected.
 
 Position modes:
 
-* ``net`` (Kalshi): selling an outcome you do not hold buys the other one,
-  and buying an outcome while holding the other closes that first.
+* ``net`` (Kalshi): one signed position, positive for YES and negative for
+  NO. Buying NO while long YES (or selling YES) reduces the position before
+  it goes short, and the reverse for buying YES while short.
 * ``tokens`` (Polymarket, HIP-4): YES and NO are separate balances. Selling
   needs tokens you hold; :meth:`split` and :meth:`merge` convert cash and
   pairs of tokens at $1 a pair.
@@ -53,20 +54,49 @@ class Account:
         self.mode = mode
         self.fees = fees
         self.reserved = 0
-        self.holdings: dict[Outcome, int] = {Outcome.YES: 0, Outcome.NO: 0}
+        self.position = 0  # net mode: signed centis, + YES / - NO
+        self._tokens: dict[Outcome, int] = {Outcome.YES: 0, Outcome.NO: 0}  # tokens mode
         self.reserved_tokens: dict[Outcome, int] = {Outcome.YES: 0, Outcome.NO: 0}
 
     @property
     def available(self) -> int:
         return self.cash - self.reserved
 
+    def held(self, outcome: Outcome) -> int:
+        """Contracts of ``outcome`` held, in centis."""
+        if self.mode is PositionMode.TOKENS:
+            return self._tokens[outcome]
+        pos = self.position if outcome is Outcome.YES else -self.position
+        return pos if pos > 0 else 0
+
+    @property
+    def holdings(self) -> dict[Outcome, int]:
+        """Holdings per outcome, in centis (a copy)."""
+        return {Outcome.YES: self.held(Outcome.YES), Outcome.NO: self.held(Outcome.NO)}
+
+    @property
+    def is_flat(self) -> bool:
+        if self.mode is PositionMode.NET:
+            return not self.position
+        return not (self._tokens[Outcome.YES] or self._tokens[Outcome.NO])
+
     def free_tokens(self, outcome: Outcome) -> int:
-        return self.holdings[outcome] - self.reserved_tokens[outcome]
+        return self.held(outcome) - self.reserved_tokens[outcome]
 
     @property
     def net_yes(self) -> int:
         """YES holdings minus NO holdings, in centis."""
-        return self.holdings[Outcome.YES] - self.holdings[Outcome.NO]
+        if self.mode is PositionMode.NET:
+            return self.position
+        return self._tokens[Outcome.YES] - self._tokens[Outcome.NO]
+
+    def _move(self, plan: Plan) -> None:
+        if self.mode is PositionMode.NET:
+            sign = 1 if plan.open_outcome is Outcome.YES else -1
+            self.position += sign * (plan.open + plan.close)
+        else:
+            self._tokens[plan.close_outcome] -= plan.close
+            self._tokens[plan.open_outcome] += plan.open
 
     # ---- planning and reservation --------------------------------------
     def plan(self, outcome: Outcome, side: Side, size: int) -> Plan | None:
@@ -134,8 +164,7 @@ class Account:
         fee_in = self._fee_input(order, px, size, plan, is_maker)
         charge = self.fees.charge(fee_in)
         self.cash += fee_in.revenue - charge.total
-        self.holdings[plan.close_outcome] -= plan.close
-        self.holdings[plan.open_outcome] += plan.open
+        self._move(plan)
         order.remaining -= size
         if order.remaining:
             self.reserve(order, check=False)
@@ -149,16 +178,16 @@ class Account:
         if size <= 0 or cost > self.available:
             raise ValueError("cannot split: bad size or not enough cash")
         self.cash -= cost
-        self.holdings[Outcome.YES] += size
-        self.holdings[Outcome.NO] += size
+        self._tokens[Outcome.YES] += size
+        self._tokens[Outcome.NO] += size
 
     def merge(self, size: int) -> None:
         """Turn ``size`` centis of YES + NO pairs back into $1 each."""
         self._tokens_only()
         if size <= 0 or min(self.free_tokens(o) for o in Outcome) < size:
             raise ValueError("cannot merge: bad size or not enough free pairs")
-        self.holdings[Outcome.YES] -= size
-        self.holdings[Outcome.NO] -= size
+        self._tokens[Outcome.YES] -= size
+        self._tokens[Outcome.NO] -= size
         self.cash += notional(ONE_DOLLAR, size)
 
     def _tokens_only(self) -> None:
@@ -170,11 +199,12 @@ class Account:
         """Pay out every holding; returns ``(payout, fees)`` in micros."""
         payout = fees = 0
         for outcome, value in ((Outcome.YES, settle_fraction), (Outcome.NO, complement(settle_fraction))):
-            n = self.holdings[outcome]
+            n = self.held(outcome)
             if n:
                 payout += value * n // CENTIS_PER_CONTRACT
                 fees += self.fees.settle_fee(value, n)
-            self.holdings[outcome] = 0
+        self.position = 0
+        self._tokens = {Outcome.YES: 0, Outcome.NO: 0}
         self.cash += payout - fees
         return payout, fees
 
@@ -182,7 +212,10 @@ class Account:
         """Cash plus holdings valued at YES price ``mark`` (floored)."""
         if mark is None:
             return self.cash
-        yes, no = self.holdings[Outcome.YES], self.holdings[Outcome.NO]
-        num, den = mark.numerator, mark.denominator
+        return self.equity_at(mark.numerator, mark.denominator)
+
+    def equity_at(self, num: int, den: int) -> int:
+        """:meth:`equity` at the YES price ``num / den``, without a Fraction."""
+        yes, no = self.held(Outcome.YES), self.held(Outcome.NO)
         value = yes * num + no * (ONE_DOLLAR * den - num)
         return self.cash + value // (CENTIS_PER_CONTRACT * den)

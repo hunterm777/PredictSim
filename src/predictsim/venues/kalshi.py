@@ -1,11 +1,18 @@
-"""Kalshi profile (as of Nov 23, 2026).
+"""Kalshi profile.
 
-* Book: two bid-only arrays, YES and NO; YES ask = $1 - best NO bid.
+* Book: "two arrays of bids: ``yes_dollars`` for YES positions and
+  ``no_dollars`` for NO positions"; "A NO BID at price Y is equivalent to a
+  YES ASK at price ($1.00 - Y)".
   https://docs.kalshi.com/getting_started/orderbook_responses
+* Orders: one YES book, bid or ask (Create Order V2: "single-book bid/ask
+  side"). Buying NO at q is the same order as selling YES at 1 - q.
+* Positions: one signed position per market, positive for YES and negative
+  for NO (an FCM transfer of 5 NO contracts is ``position_centicount`` -500),
+  so YES and NO net against each other.
 * Grid: per-market ``price_ranges`` bands; whole cents are always valid.
   https://docs.kalshi.com/getting_started/fixed_point_migration
 * Sizes: fractional contracts at 0.01 granularity.
-* Positions: net per market.
+* Fees: :mod:`predictsim.fees.kalshi`; multipliers are set per series.
 """
 
 from __future__ import annotations
@@ -25,15 +32,15 @@ CENT = 10_000
 
 @dataclass(frozen=True, slots=True)
 class KalshiProfile:
-    """Kalshi venue profile. ``maker_fees`` should be True only for series
-    that list maker fees."""
+    """Kalshi venue profile. Multipliers come from Kalshi's fee schedule for
+    the market's series: taker defaults to 1, maker to 0."""
 
-    taker_coef: Number | Fraction = "0.07"
-    maker_coef: Number | Fraction = "0.0175"
-    maker_fees: bool = False
+    taker_multiplier: Number | Fraction = 1
+    maker_multiplier: Number | Fraction = 0
     direct_member: bool = False
     name: str = "kalshi"
     position_mode: PositionMode = PositionMode.NET
+    min_notional: int = 0
 
     def price_ok(self, grid: Grid, px: int) -> bool:
         return grid.contains(px) or (0 < px < ONE_DOLLAR and px % CENT == 0)
@@ -42,13 +49,7 @@ class KalshiProfile:
         return size > 0 and size % spec.size_step == 0
 
     def fee_model(self, spec: MarketSpec) -> KalshiFees:
-        return KalshiFees(
-            taker_coef=self.taker_coef,
-            maker_coef=self.maker_coef,
-            multiplier=spec.fee_multiplier,
-            maker_fees=self.maker_fees,
-            direct_member=self.direct_member,
-        )
+        return KalshiFees(self.taker_multiplier, self.maker_multiplier, self.direct_member)
 
     def default_grid(self) -> Grid:
         return uniform_grid(CENT)

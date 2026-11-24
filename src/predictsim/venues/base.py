@@ -28,6 +28,11 @@ class VenueProfile(Protocol):
     @property
     def position_mode(self) -> PositionMode: ...
 
+    @property
+    def min_notional(self) -> int:
+        """Smallest order value in micro-dollars (Polymarket ``orderMinSize``)."""
+        ...
+
     def price_ok(self, grid: Grid, px: int) -> bool:
         """Is ``px`` (YES micros) a valid price on ``grid``?"""
         ...

@@ -2,7 +2,7 @@
 
 from predictsim.events import Side
 from predictsim.orders import OrderStatus, OrderType, Outcome
-from predictsim.venues import PolymarketProfile
+from predictsim.venues import KalshiProfile, PolymarketProfile
 from tests.helpers import BookSide, Delta, Snapshot, make
 
 BOOK = Snapshot(1, ((400_000, 1000), (390_000, 500)), ((420_000, 500), (430_000, 1000)))
@@ -46,7 +46,7 @@ def test_snapshot_clears_shadow() -> None:
 
 
 def test_buy_no_takes_yes_bids() -> None:
-    ex, fills = make(PolymarketProfile())
+    ex, fills = make(PolymarketProfile("0.05"))
     ex.on_event(BOOK, 0)
     o = ex.new_order(1, Outcome.NO, Side.BUY, 610_000, 1200, OrderType.IOC)
     assert (o.yes_side, o.yes_px) == (BookSide.ASK, 390_000)
@@ -122,7 +122,7 @@ def test_cancel_and_close() -> None:
 def test_arrival_after_close_or_grid_change() -> None:
     from predictsim.events import Band, GridChange
 
-    ex, _ = make(PolymarketProfile())
+    ex, _ = make(PolymarketProfile("0.05"))
     o = ex.new_order(1, Outcome.YES, Side.BUY, 410_000, 100, OrderType.GTC)
     ex.on_event(GridChange(2, (Band(100_000, 900_000, 100_000),)), 1)
     ex.arrive(o, 2)
@@ -132,3 +132,20 @@ def test_arrival_after_close_or_grid_change() -> None:
     ex2.closed = True
     ex2.arrive(p, 2)
     assert p.reason == "market closed"
+
+
+def test_polymarket_rejects_orders_below_min_order_value() -> None:
+    ex, _ = make(PolymarketProfile("0.05", min_notional=5_000_000))
+    small = ex.new_order(0, Outcome.YES, Side.BUY, 400_000, 1000, OrderType.GTC)
+    assert small.status is OrderStatus.REJECTED and "below the minimum" in small.reason
+    ok = ex.new_order(0, Outcome.YES, Side.BUY, 500_000, 1000, OrderType.GTC)
+    assert ok.status is OrderStatus.PENDING
+
+
+def test_kalshi_buy_no_is_a_short_yes_position() -> None:
+    ex, fills = make(KalshiProfile())
+    ex.on_event(Snapshot(0, ((400_000, 1000),), ((420_000, 1000),)), 0)
+    ex.arrive(ex.new_order(0, Outcome.NO, Side.BUY, 600_000, 500, OrderType.IOC), 0)
+    assert fills[0].px == 600_000 and ex.account.position == -500
+    ex.arrive(ex.new_order(0, Outcome.YES, Side.BUY, 420_000, 500, OrderType.IOC), 0)
+    assert ex.account.position == 0

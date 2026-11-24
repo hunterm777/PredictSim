@@ -127,7 +127,7 @@ def test_context_views_and_tokens_ops() -> None:
             ctx.cancel(o.order_id)
             ctx.cancel(999)
 
-    spec = spec_for(PolymarketProfile())
+    spec = spec_for(PolymarketProfile("0.05"))
     run_backtest(Peek(), [BOOK], spec, BacktestConfig(10_000_000))
     assert out == {
         "cash": 9_000_000,

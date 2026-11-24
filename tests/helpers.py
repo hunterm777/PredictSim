@@ -8,7 +8,7 @@ from predictsim.matching import Exchange
 from predictsim.orders import Fill
 from predictsim.queue import QueueModel
 from predictsim.spec import MarketSpec, uniform_grid
-from predictsim.venues import HIP4Profile, KalshiProfile, PolymarketProfile, VenueProfile
+from predictsim.venues import HIP4Profile, KalshiProfile, VenueProfile
 
 __all__ = ["BookSide", "Delta", "Snapshot", "Trade", "make", "spec_for"]
 
@@ -16,8 +16,7 @@ __all__ = ["BookSide", "Delta", "Snapshot", "Trade", "make", "spec_for"]
 def spec_for(venue: VenueProfile, close_ts: int = 1_000_000) -> MarketSpec:
     if isinstance(venue, HIP4Profile):
         return MarketSpec("h", venue, 0, close_ts, uniform_grid(10_000), 100, 100)
-    category = "sports" if isinstance(venue, PolymarketProfile) else None
-    return MarketSpec("m", venue, 0, close_ts, uniform_grid(10_000), 1, 1, fee_category=category)
+    return MarketSpec("m", venue, 0, close_ts, uniform_grid(10_000), 1, 1)
 
 
 def make(

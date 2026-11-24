@@ -12,7 +12,6 @@ import heapq
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from enum import IntEnum
-from fractions import Fraction
 
 import numpy as np
 
@@ -78,7 +77,7 @@ class Engine:
         self._last_delivery = 0
         self._heap: list[tuple[int, int, _Act, object]] = []
         self._seq = 0
-        self._mark: Fraction | None = None
+        self._mark2: int | None = None  # best bid + best ask, i.e. twice the mid
         self._dirty = False
         self.done = False
         self._push(spec.close_ts, _Act.CLOSE, None)
@@ -126,17 +125,18 @@ class Engine:
                 self._deliver(*payload)
             else:
                 self.exchange.close(self.now)
-            self._record()
+            if self._dirty:
+                self._record()
 
     # ---- market data ---------------------------------------------------
-    def _deliver(self, ev: Event, index: int) -> None:
+    def _deliver(self, ev: Snapshot | Delta | Trade, index: int) -> None:
         if isinstance(ev, Trade):
             self.strategy.on_trade(self.ctx, ev)
             return
         if not self._inline_data:
             if isinstance(ev, Snapshot):
                 self.strategy_book.apply_snapshot(ev, index)
-            elif isinstance(ev, Delta):
+            else:
                 self.strategy_book.apply_delta(ev, index)
         self.strategy.on_book(self.ctx, self.strategy_book)
 
@@ -153,16 +153,19 @@ class Engine:
 
     def mark_equity(self) -> int:
         """Equity marked at the venue mid (or the last known mid)."""
-        mid = self.exchange.book.mid()
-        if mid is not None:
-            self._mark = mid
-        return self.account.equity(self._mark)
+        book = self.exchange.book
+        bid, ask = book.best_bid(), book.best_ask()
+        if bid is not None and ask is not None:
+            self._mark2 = bid + ask
+        if self._mark2 is None:
+            return self.account.cash
+        return self.account.equity_at(self._mark2, 2)
 
     def _record(self) -> None:
         acct = self.account
         if acct.cash < self.min_cash:
             self.min_cash = acct.cash
-        if self._dirty or acct.holdings[Outcome.YES] or acct.holdings[Outcome.NO]:
+        if self._dirty or not acct.is_flat:
             self.equity.append((self.now, self.mark_equity()))
             self._dirty = False
 
@@ -182,7 +185,8 @@ class Engine:
         if self._last_ts is not None and ev.ts < self._last_ts:
             raise ValueError(f"event {index}: timestamp {ev.ts} goes backwards")
         self._last_ts = ev.ts
-        self._run_actions(ev.ts)
+        if self._heap and self._heap[0][0] <= ev.ts:
+            self._run_actions(ev.ts)
         self.now = max(self.now, ev.ts)
         settled_before = self.exchange.settlement is not None
         applied = self.exchange.on_event(ev, index)

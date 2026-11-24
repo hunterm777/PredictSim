@@ -47,12 +47,16 @@ class Exchange:
         self.resting: dict[Key, list[Order]] = {}
         self.consumed: dict[Key, int] = {}
         self.traded: dict[Key, int] = {}
+        self._valid: dict[int, bool] = {}  # price_ok results for the current grid
         self.closed = False
         self.settlement: tuple[int, int, int] | None = None  # (ts, payout, fees)
         self._next_id = 1
 
     def price_ok(self, px: int) -> bool:
-        return self.spec.venue.price_ok(self.grid, px)
+        ok = self._valid.get(px)
+        if ok is None:
+            ok = self._valid[px] = self.spec.venue.price_ok(self.grid, px)
+        return ok
 
     # ---- order entry ---------------------------------------------------
     def new_order(
@@ -91,6 +95,9 @@ class Exchange:
             return f"price {o.px} is off the grid"
         if (o.px * o.size) % CENTIS_PER_CONTRACT:
             return "price x size is not a whole micro-dollar"
+        value = o.px * o.size // CENTIS_PER_CONTRACT
+        if value < self.spec.venue.min_notional:
+            return f"order value {value} is below the minimum {self.spec.venue.min_notional}"
         return None
 
     def _finish(self, o: Order, ts: int, status: OrderStatus, reason: str = "") -> None:
@@ -182,6 +189,7 @@ class Exchange:
             return self._on_snapshot(ev, index)
         elif isinstance(ev, GridChange):
             self.grid = Grid(ev.bands)
+            self._valid.clear()
         elif isinstance(ev, Settle) and self.settlement is None:
             self.close(ev.ts)
             payout, fees = self.account.settle(ev.settle_fraction)

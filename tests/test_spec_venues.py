@@ -31,9 +31,10 @@ def test_kalshi_profile() -> None:
     grid = Grid((Band(0, 100_000, 1_000),))
     assert k.price_ok(grid, 2_000) and k.price_ok(grid, 500_000)  # whole cents always valid
     assert not k.price_ok(grid, 505_000)
-    spec = MarketSpec("k", k, 0, 1, grid, 1, 1, fee_multiplier=Fraction(1, 2))
+    spec = MarketSpec("k", KalshiProfile(taker_multiplier=Fraction(1, 2)), 0, 1, grid, 1, 1)
     fees = spec.fee_model()
-    assert isinstance(fees, KalshiFees) and fees.multiplier == Fraction(1, 2)
+    assert isinstance(fees, KalshiFees) and fees.taker_multiplier == Fraction(1, 2)
+    assert fees.maker_multiplier == 0 and k.min_notional == 0
     assert k.size_ok(spec, 1) and not k.size_ok(spec, 0)
     assert k.position_mode is PositionMode.NET and k.default_grid().contains(10_000)
 
@@ -49,15 +50,14 @@ def test_kalshi_book_conversion() -> None:
 
 
 def test_polymarket_profile() -> None:
-    p = PolymarketProfile()
-    spec = MarketSpec("p", p, 0, 1, uniform_grid(1_000), 1, 500, fee_category="sports")
+    p = PolymarketProfile("0.05", fee_exponent=2, taker_only=False, min_notional=5_000_000)
+    spec = MarketSpec("p", p, 0, 1, uniform_grid(1_000), 1, 500)
     fees = spec.fee_model()
     assert isinstance(fees, PolymarketFees) and fees.rate == "0.05"
+    assert fees.exponent == 2 and not fees.taker_only and fees.enabled
     assert p.position_mode is PositionMode.TOKENS
     assert p.size_ok(spec, 1) and p.price_ok(spec.grid, 1_000)
     assert p.default_grid().contains(10_000)
-    with pytest.raises(ValueError):
-        MarketSpec("p", p, 0, 1, uniform_grid(1_000), 1, 1).fee_model()
 
 
 def test_hip4_profile() -> None:

@@ -12,7 +12,7 @@ BOOK = Snapshot(1, ((400_000, 1000),), ((420_000, 500),))
 
 
 def resting_bid(queue: QueueModel = QueueModel.PESSIMISTIC):  # type: ignore[no-untyped-def]
-    ex, fills = make(PolymarketProfile(), queue=queue)
+    ex, fills = make(PolymarketProfile("0.05"), queue=queue)
     ex.on_event(BOOK, 0)
     o = ex.new_order(1, Outcome.YES, Side.BUY, 400_000, 500, OrderType.GTC)
     ex.arrive(o, 1)
@@ -70,7 +70,7 @@ def test_fills_in_full_when_opposite_moves_through() -> None:
 
 
 def test_resting_ask_fills_through_on_snapshot() -> None:
-    ex, fills = make(PolymarketProfile())
+    ex, fills = make(PolymarketProfile("0.05"))
     ex.on_event(BOOK, 0)
     ex.account.split(500)
     o = ex.new_order(1, Outcome.YES, Side.SELL, 420_000, 500, OrderType.GTC)

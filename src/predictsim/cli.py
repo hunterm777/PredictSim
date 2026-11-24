@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from predictsim.io.csv import SchemaError, load_csv
@@ -13,9 +13,9 @@ from predictsim.spec import MarketSpec, uniform_grid
 from predictsim.units import to_micros
 from predictsim.venues import HIP4Profile, KalshiProfile, PolymarketProfile, VenueProfile
 
-VENUES: dict[str, type[KalshiProfile] | type[PolymarketProfile] | type[HIP4Profile]] = {
+VENUES: dict[str, Callable[[], VenueProfile]] = {
     "kalshi": KalshiProfile,
-    "polymarket": PolymarketProfile,
+    "polymarket": lambda: PolymarketProfile(fee_rate=0),  # fees play no part in validation
     "hip4": HIP4Profile,
 }
 
@@ -52,7 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, SchemaError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    spec = MarketSpec("validate", venue, 0, 2**63 - 1, grid, 1, 1, fee_category="other")
+    spec = MarketSpec("validate", venue, 0, 2**63 - 1, grid, 1, 1)
     issues = validate(events, spec)
     for issue in issues:
         print(issue)

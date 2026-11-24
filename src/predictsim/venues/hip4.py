@@ -1,13 +1,20 @@
-"""Hyperliquid HIP-4 profile (as of Nov 23, 2026).
+"""Hyperliquid HIP-4 profile.
 
-* Book: YES and NO tokens with merged books: buying YES at P is selling NO at
-  1 - P, so every order maps to YES space.
-* Grid: bounded 0.001 to 0.999 (Galaxy Research); mainnet quotes up to 5
-  decimals (Chainstack).
-* Sizes: whole shares.
-* Fees: spot-tier rate on close or settle only; see :mod:`predictsim.fees.hip4`.
-* Settlement: YES pays ``settleFraction``, NO pays ``1 - settleFraction``.
-  https://docs.chainstack.com/docs/hyperliquid-hip4-outcome-markets-trading
+From https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-improvement-proposals-hips/hip-4-outcome-markets:
+
+* Tokens: "Each outcome market consists of two sides, each with a token",
+  usually Yes and No; they are separate balances, linked by merge.
+* Book: "The order books of Yes and No tokens for the same outcome are merged
+  to share liquidity"; "an order to buy Yes at price p is equivalent to an
+  order to sell No at price 1-p", so every order maps to YES space.
+* Settlement: "Yes to settleFraction quote tokens and No to
+  1 - settleFraction quote tokens".
+* Fees: on close or settle only; see :mod:`predictsim.fees.hip4`.
+
+Hyperliquid's docs do not give the outcome price tick or size decimals. The
+default grid (0.001 to 0.999 in 0.00001 steps) is from third-party guides
+(Galaxy Research, Chainstack); set the grid and ``size_step`` from the
+market's own metadata.
 """
 
 from __future__ import annotations
@@ -18,7 +25,7 @@ from fractions import Fraction
 from predictsim.events import Band
 from predictsim.fees.hip4 import HIP4Fees
 from predictsim.spec import Grid, MarketSpec
-from predictsim.units import CENTIS_PER_CONTRACT, Number
+from predictsim.units import Number
 from predictsim.venues.base import PositionMode
 
 
@@ -32,12 +39,13 @@ class HIP4Profile:
     referral_discount: Number | Fraction = 0
     name: str = "hip4"
     position_mode: PositionMode = PositionMode.TOKENS
+    min_notional: int = 0
 
     def price_ok(self, grid: Grid, px: int) -> bool:
         return grid.contains(px)
 
     def size_ok(self, spec: MarketSpec, size: int) -> bool:
-        return size > 0 and size % spec.size_step == 0 and size % CENTIS_PER_CONTRACT == 0
+        return size > 0 and size % spec.size_step == 0
 
     def fee_model(self, spec: MarketSpec) -> HIP4Fees:
         return HIP4Fees(self.taker_rate, self.maker_rate, self.deployer_scale, self.referral_discount)

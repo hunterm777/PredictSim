@@ -1,4 +1,7 @@
-"""Kalshi fee acceptance tests from the PRD table and Kalshi's fee-rounding docs."""
+"""Kalshi fee acceptance tests from the PRD table, Kalshi's fee schedule
+(effective July 7, 2026) and Kalshi's fee-rounding docs."""
+
+import pytest
 
 from predictsim.fees import FeeInput, KalshiFees
 
@@ -13,14 +16,25 @@ def test_taker_100_at_50c_is_175() -> None:
 
 
 def test_maker_100_at_50c_is_044() -> None:
-    charge = KalshiFees(maker_fees=True).charge(fill(1, 500_000, 10_000, maker=True))
+    charge = KalshiFees(maker_multiplier=1).charge(fill(1, 500_000, 10_000, maker=True))
     assert charge.trade_fee == 437_500  # 0.0175 x 100 x 0.25, exact
     assert charge.rounding_fee == 2_500  # balance floored to the cent
     assert charge.total == 440_000
 
 
-def test_maker_pays_nothing_without_maker_fees() -> None:
+def test_maker_multiplier_defaults_to_zero() -> None:
     assert KalshiFees().charge(fill(1, 500_000, 10_000, maker=True)).total == 0
+
+
+def test_combo_maker_fee_is_half_of_taker() -> None:
+    # fee schedule: combos charge makers 50% of taker, $0.88 at 100 x $0.50
+    combo = KalshiFees(maker_multiplier=2)
+    assert combo.charge(fill(1, 500_000, 10_000, maker=True)).total == 880_000
+
+
+def test_negative_multiplier_rejected() -> None:
+    with pytest.raises(ValueError):
+        KalshiFees(taker_multiplier=-1)
 
 
 def test_taker_100_at_10c_is_063() -> None:
@@ -72,8 +86,8 @@ def test_direct_members_round_to_hundredth_cent() -> None:
 
 
 def test_multiplier_sits_inside_round_up() -> None:
-    # CFTC filing: INX markets use round up(0.035 x C x P x (1-P)); $0.88 at $0.50
-    half = KalshiFees(multiplier="0.5")
+    # fee schedule: round up(M x 0.07 x C x P x (1-P)); M = 0.5 gives $0.88 at $0.50
+    half = KalshiFees(taker_multiplier="0.5")
     assert half.charge(fill(1, 500_000, 10_000)).total == 880_000
     assert half.trade_fee(100_000, 10_000, False) == 315_000
 

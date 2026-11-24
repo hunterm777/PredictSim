@@ -29,12 +29,10 @@ Timestamps must not decrease. With `BacktestConfig(strict=True)` (the default) a
 | Field | Meaning |
 | --- | --- |
 | `market_id` | Any string |
-| `venue` | `KalshiProfile()`, `PolymarketProfile()` or `HIP4Profile(...)` |
+| `venue` | `KalshiProfile(...)`, `PolymarketProfile(fee_rate=...)` or `HIP4Profile(...)`, with the market's own fee parameters |
 | `open_ts`, `close_ts` | Orders are accepted from open; open orders are cancelled at close |
 | `grid` | Initial price grid: `Grid((Band(start, end, step), ...))` or `uniform_grid(step)` |
 | `size_step`, `min_size` | Order size granularity and minimum, in centi-contracts |
-| `fee_category` | Polymarket fee category (see the Polymarket page) |
-| `fee_multiplier` | Kalshi fee multiplier, applied inside the round-up |
 | `fees` | Optional fee model that replaces the venue's, e.g. `CustomFees(fn)` |
 
 A price is on the grid if it is strictly between $0 and $1 and lies on some band's `start + k * step` lattice within `[start, end]`. Bands may share endpoints.

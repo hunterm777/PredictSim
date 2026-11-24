@@ -75,7 +75,7 @@ def _csv_rows(path: Path) -> list[dict[str, str]]:
 
 
 def test_validate_reports_every_problem() -> None:
-    spec = MarketSpec("v", PolymarketProfile(), 0, 100, uniform_grid(10_000), 1, 1, fee_category="other")
+    spec = MarketSpec("v", PolymarketProfile("0.05"), 0, 100, uniform_grid(10_000), 1, 1)
     evs = [
         Snapshot(5, ((400_000, 10),), ((420_000, 10),)),
         Delta(4, BookSide.BID, 405_000, 1),

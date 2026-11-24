@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from fractions import Fraction
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from predictsim.events import Band
@@ -73,9 +72,9 @@ def uniform_grid(step: int, low: int | None = None, high: int | None = None) -> 
 class MarketSpec:
     """Everything the simulator needs to know about one binary market.
 
-    ``fee_category`` picks the Polymarket rate; ``fee_multiplier`` scales the
-    Kalshi formula. ``fees`` overrides the venue's fee model entirely (for
-    example with :class:`predictsim.fees.custom.CustomFees`).
+    The market's own fee parameters live on its venue profile. ``fees``
+    replaces the venue's fee model entirely (for example with
+    :class:`predictsim.fees.custom.CustomFees`).
     """
 
     market_id: str
@@ -85,8 +84,6 @@ class MarketSpec:
     grid: Grid
     size_step: int
     min_size: int
-    fee_category: str | None = None
-    fee_multiplier: Fraction = field(default_factory=lambda: Fraction(1))
     fees: FeeModel | None = None
 
     def __post_init__(self) -> None:
