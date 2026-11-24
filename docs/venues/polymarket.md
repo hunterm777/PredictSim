@@ -30,3 +30,23 @@ Polymarket's two fee pages list different rates by category (for example crypto 
 Maker rebates are out of scope for v1; fees are gross. `secondsDelay` (a delay before a marketable order can match) is not modelled; use submit latency.
 
 Checked example: 100 shares at 0.50, rate 0.05 → 1.25.
+
+## Negative-risk events (multi-outcome)
+
+Implemented in `predictsim.multi` and run in portfolio mode: `run_portfolio(..., groups=[NegRiskEvent(("a", "b", "other"))])`. Each outcome is its own binary market with its own book, events, fees and `MarketSpec`.
+
+| Mechanic | Polymarket | Source |
+| --- | --- | --- |
+| Settlement | "Exactly one market in the group resolves Yes, while every other market resolves No." PredictSim checks this when the group finishes | [Negative risk](https://docs.polymarket.com/concepts/negative-risk) |
+| Conversion | "A No share in any market can be converted into 1 Yes share in every other market": `ctx.convert(size)` takes `size` NO from the calling market and adds `size` YES to every other market of the event | same |
+| Split and merge | Per market, as for any binary market | [Markets & events](https://docs.polymarket.com/concepts/markets-events) |
+
+Not specified by Polymarket's docs, so chosen by PredictSim:
+
+* Conversion fee: none is published, so none is charged.
+* Conversion after any market of the event has settled: refused.
+* Reversibility: there is no reverse conversion.
+* Collateral when converting No shares from several markets at once: not modelled. Each `convert` call works on one market.
+* A 50/50 resolution inside an event: refused, since exactly one market must resolve Yes.
+* "Other" and placeholder markets: list them in the event like any market; how a placeholder is later clarified is not modelled.
+* Per-market PnL inside an event is an attribution, because a conversion moves tokens between markets with no cash. The event total is exact.

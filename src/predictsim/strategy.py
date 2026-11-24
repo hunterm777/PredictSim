@@ -9,7 +9,8 @@ from predictsim.events import Side, Trade
 from predictsim.orders import Fill, Order, OrderType, Outcome
 
 if TYPE_CHECKING:
-    from predictsim.backtest import Engine
+    from predictsim.engine import Engine
+    from predictsim.multi import GroupState
 
 
 class Context:
@@ -22,6 +23,11 @@ class Context:
         self._engine = engine
 
     @property
+    def market_id(self) -> str:
+        """The market this context trades."""
+        return self._engine.spec.market_id
+
+    @property
     def now(self) -> int:
         """Current simulated time in nanoseconds."""
         return self._engine.now
@@ -32,7 +38,8 @@ class Context:
 
     @property
     def cash(self) -> int:
-        """Total cash in micro-dollars, including cash reserved for orders."""
+        """Total cash in micro-dollars, including cash reserved for orders.
+        In portfolio mode this is the shared cash of every market."""
         return self._engine.account.cash
 
     @property
@@ -76,11 +83,33 @@ class Context:
 
     def split(self, size: int) -> None:
         """Tokens mode: turn cash into YES + NO pairs ($1 a pair)."""
-        self._engine.account.split(size)
+        self._engine.split(size)
 
     def merge(self, size: int) -> None:
         """Tokens mode: turn YES + NO pairs back into cash."""
-        self._engine.account.merge(size)
+        self._engine.merge(size)
+
+    # ---- multi-outcome groups (portfolio mode), see predictsim.multi -----
+    def convert(self, size: int) -> None:
+        """Polymarket neg-risk: convert ``size`` NO of this market into
+        ``size`` YES of every other market of its event."""
+        self._group().convert(self._engine, size)
+
+    def negate(self, size: int) -> None:
+        """HIP-4 ``negateOutcome``: ``size`` NO of this outcome into ``size``
+        YES of every other outcome of its question."""
+        self._group().negate(self._engine, size)
+
+    def merge_question(self, size: int) -> None:
+        """HIP-4 ``mergeQuestion``: ``size`` YES of every outcome of this
+        question into cash ($1 each), credited to this market."""
+        self._group().merge_question(self._engine, size)
+
+    def _group(self) -> GroupState:
+        group = self._engine.group
+        if group is None:
+            raise ValueError(f"market {self.market_id} is not in a multi-outcome group")
+        return group
 
 
 class Strategy:

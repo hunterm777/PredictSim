@@ -23,7 +23,18 @@ dependencies = ["numpy>=1.26"]
 [project.optional-dependencies]
 gym = ["gymnasium>=1.0"]
 parquet = ["pyarrow>=15"]
-dev = ["pytest>=8", "pytest-cov>=5", "mypy>=1.10", "ruff>=0.5", "gymnasium>=1.0", "pyarrow>=15"]
+pandas = ["pandas>=2"]
+polars = ["polars>=1"]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "mypy>=1.10",
+    "ruff>=0.5",
+    "gymnasium>=1.0",
+    "pyarrow>=15",
+    "pandas>=2",
+    "polars>=1",
+]
 
 [project.scripts]
 predictsim = "predictsim.cli:main"

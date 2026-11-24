@@ -48,3 +48,23 @@ markPrice0 + (settlementTime - t0) / (t1 - t0) × (markPrice1 - markPrice0) >= t
 ## Opening auction
 
 Galaxy reports each HIP-4 market opens with a roughly 15-minute single-price auction; Hyperliquid's docs do not mention it. PredictSim does not model it: start your event stream at continuous trading.
+
+## Questions (multi-outcome)
+
+Implemented in `predictsim.multi` and run in portfolio mode: `run_portfolio(..., groups=[HIP4Question(("a", "b"), fallback="other")])`. Each outcome, the fallback included, is its own market with its own book, events and `MarketSpec`.
+
+"Multi-outcome markets will be supported but are not part of the initial mainnet release" ([HIP-4](https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-improvement-proposals-hips/hip-4-outcome-markets)), and the [deployer actions](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/hip-4-deployer-actions) page is marked "Testnet-only". Treat this as testnet behaviour.
+
+| Mechanic | HIP-4 | Source |
+| --- | --- | --- |
+| Question | "Questions are collections of outcomes where exactly one outcome will settle to Yes, and all others will settle to No." A question with N named outcomes has a fallback outcome created automatically, N + 1 in all | HIP-4; deployer actions |
+| Settlement | Question outcomes "must settle to exactly 0 or 1". PredictSim refuses anything else and checks that exactly one outcome settles YES | deployer actions |
+| `negateOutcome` | "X No shares from an outcome associated with a question into X Yes shares of every other outcome associated with the question": `ctx.negate(size)` | [Exchange endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint) |
+| `mergeQuestion` | "X Yes shares from each outcome associated to the same question into X quote tokens": `ctx.merge_question(size)` | same |
+
+Not specified by Hyperliquid's docs, so chosen by PredictSim:
+
+* Whether the fallback takes part in `negateOutcome` and `mergeQuestion`. PredictSim counts it, the only reading under which both stay fully collateralized (without it, a fallback win would leave a merged set worth $0).
+* Fees on `negateOutcome` and `mergeQuestion`: none is published, so none is charged.
+* Either action after any outcome of the question has settled: refused.
+* `mergeQuestion` cash is credited to the market whose context called it, so per-market PnL inside a question is an attribution. The question total is exact.

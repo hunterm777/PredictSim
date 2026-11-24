@@ -44,23 +44,57 @@ class Plan:
     open: int
 
 
-class Account:
-    """Cash and token holdings for one market."""
+class Wallet:
+    """Cash shared by one or more accounts. A single-market backtest gives
+    each account its own wallet; portfolio mode gives every market the same
+    one, so cash and reservations are shared."""
 
-    def __init__(self, cash: int, mode: PositionMode, fees: FeeModel) -> None:
+    __slots__ = ("cash", "reserved")
+
+    def __init__(self, cash: int) -> None:
         if cash < 0:
             raise ValueError("cash must be >= 0")
         self.cash = cash
+        self.reserved = 0
+
+    @property
+    def available(self) -> int:
+        return self.cash - self.reserved
+
+
+class Account:
+    """Token holdings for one market, and the cash they draw on.
+
+    ``flow`` is this market's own net cash change since the start (fills,
+    fees, split, merge and settlement); with an own wallet it equals cash
+    minus the starting cash."""
+
+    def __init__(self, cash: int | Wallet, mode: PositionMode, fees: FeeModel) -> None:
+        self.wallet = cash if isinstance(cash, Wallet) else Wallet(cash)
+        self.flow = 0
         self.mode = mode
         self.fees = fees
-        self.reserved = 0
         self.position = 0  # net mode: signed centis, + YES / - NO
         self._tokens: dict[Outcome, int] = {Outcome.YES: 0, Outcome.NO: 0}  # tokens mode
         self.reserved_tokens: dict[Outcome, int] = {Outcome.YES: 0, Outcome.NO: 0}
 
     @property
+    def cash(self) -> int:
+        """Cash in the wallet, including cash reserved for open orders."""
+        return self.wallet.cash
+
+    @property
+    def reserved(self) -> int:
+        """Cash reserved for open orders, across every account on the wallet."""
+        return self.wallet.reserved
+
+    @property
     def available(self) -> int:
-        return self.cash - self.reserved
+        return self.wallet.available
+
+    def credit(self, amount: int) -> None:
+        self.wallet.cash += amount
+        self.flow += amount
 
     def held(self, outcome: Outcome) -> int:
         """Contracts of ``outcome`` held, in centis."""
@@ -126,13 +160,13 @@ class Account:
             return f"needs {need} micros, {self.available} available"
         order.reserved_cash = need
         order.reserved_tokens = {plan.close_outcome: plan.close} if plan.close else {}
-        self.reserved += need
+        self.wallet.reserved += need
         for o, n in order.reserved_tokens.items():
             self.reserved_tokens[o] += n
         return None
 
     def release(self, order: Order) -> None:
-        self.reserved -= order.reserved_cash
+        self.wallet.reserved -= order.reserved_cash
         for o, n in order.reserved_tokens.items():
             self.reserved_tokens[o] -= n
         order.reserved_cash = 0
@@ -163,7 +197,9 @@ class Account:
             raise RuntimeError("fill without tokens")
         fee_in = self._fee_input(order, px, size, plan, is_maker)
         charge = self.fees.charge(fee_in)
-        self.cash += fee_in.revenue - charge.total
+        delta = fee_in.revenue - charge.total
+        self.wallet.cash += delta
+        self.flow += delta
         self._move(plan)
         order.remaining -= size
         if order.remaining:
@@ -177,7 +213,7 @@ class Account:
         cost = notional(ONE_DOLLAR, size)
         if size <= 0 or cost > self.available:
             raise ValueError("cannot split: bad size or not enough cash")
-        self.cash -= cost
+        self.credit(-cost)
         self._tokens[Outcome.YES] += size
         self._tokens[Outcome.NO] += size
 
@@ -188,7 +224,7 @@ class Account:
             raise ValueError("cannot merge: bad size or not enough free pairs")
         self._tokens[Outcome.YES] -= size
         self._tokens[Outcome.NO] -= size
-        self.cash += notional(ONE_DOLLAR, size)
+        self.credit(notional(ONE_DOLLAR, size))
 
     def _tokens_only(self) -> None:
         if self.mode is not PositionMode.TOKENS:
@@ -205,7 +241,7 @@ class Account:
                 fees += self.fees.settle_fee(value, n)
         self.position = 0
         self._tokens = {Outcome.YES: 0, Outcome.NO: 0}
-        self.cash += payout - fees
+        self.credit(payout - fees)
         return payout, fees
 
     def equity(self, mark: Fraction | None) -> int:
@@ -216,6 +252,26 @@ class Account:
 
     def equity_at(self, num: int, den: int) -> int:
         """:meth:`equity` at the YES price ``num / den``, without a Fraction."""
-        yes, no = self.held(Outcome.YES), self.held(Outcome.NO)
-        value = yes * num + no * (ONE_DOLLAR * den - num)
-        return self.cash + value // (CENTIS_PER_CONTRACT * den)
+        return self.wallet.cash + self.value_at(num, den)
+
+    def value_at(self, num: int, den: int) -> int:
+        """Holdings valued at the YES price ``num / den`` (floored)."""
+        if self.mode is PositionMode.TOKENS:  # held(), inlined on the hot path
+            yes, no = self._tokens[Outcome.YES], self._tokens[Outcome.NO]
+        else:
+            pos = self.position
+            yes, no = (pos, 0) if pos > 0 else (0, -pos)
+        return (yes * num + no * (ONE_DOLLAR * den - num)) // (CENTIS_PER_CONTRACT * den)
+
+    # ---- multi-outcome token moves --------------------------------------
+    def take_tokens(self, outcome: Outcome, size: int) -> None:
+        """Remove ``size`` free tokens of ``outcome`` (tokens mode)."""
+        self._tokens_only()
+        if size <= 0 or self.free_tokens(outcome) < size:
+            raise ValueError(f"not enough free {outcome} tokens")
+        self._tokens[outcome] -= size
+
+    def add_tokens(self, outcome: Outcome, size: int) -> None:
+        """Add ``size`` tokens of ``outcome`` (tokens mode)."""
+        self._tokens_only()
+        self._tokens[outcome] += size

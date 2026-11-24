@@ -3,9 +3,11 @@ micro-dollars; only ratios are floats."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from predictsim.orders import Fill, Order
+from predictsim.stats import Performance, TradeStats, performance, trade_stats
+from predictsim.trades import RoundTrip
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +35,8 @@ class Summary:
 @dataclass(frozen=True, slots=True)
 class BacktestResult:
     """Everything one market run produced. ``equity`` is a list of
-    ``(ts, equity)`` points recorded whenever equity could have changed."""
+    ``(ts, equity)`` points recorded whenever equity could have changed.
+    In portfolio mode ``initial_cash`` is 0 and equity is the market's PnL."""
 
     market_id: str
     initial_cash: int
@@ -43,6 +46,7 @@ class BacktestResult:
     equity: list[tuple[int, int]]
     min_cash: int
     settlement: tuple[int, int, int] | None
+    round_trips: list[RoundTrip] = field(default_factory=list)
 
     @property
     def final_equity(self) -> int:
@@ -60,6 +64,16 @@ class BacktestResult:
     def summary(self) -> Summary:
         return _summarize([self])
 
+    def performance(
+        self, period_ns: int, periods_per_year: float | None = None, risk_free: float = 0.0
+    ) -> Performance:
+        """Sharpe and Sortino of the equity curve; see :mod:`predictsim.stats`."""
+        return performance(self.equity, period_ns, periods_per_year, risk_free)
+
+    def trade_stats(self) -> TradeStats:
+        """Per-trade breakdown over :attr:`round_trips`."""
+        return trade_stats(self.round_trips)
+
 
 @dataclass(frozen=True, slots=True)
 class ManyResult:
@@ -74,6 +88,26 @@ class ManyResult:
         """Per-market summaries keyed by market id."""
         return {r.market_id: r.summary() for r in self.results}
 
+    @property
+    def equity(self) -> list[tuple[int, int]]:
+        """The markets' equity curves joined in order into one curve that
+        starts at the first market's starting cash."""
+        base = self.results[0].initial_cash if self.results else 0
+        return [(ts, base + v) for ts, v in _chain([r.equity for r in self.results])]
+
+    @property
+    def round_trips(self) -> list[RoundTrip]:
+        return [t for r in self.results for t in r.round_trips]
+
+    def performance(
+        self, period_ns: int, periods_per_year: float | None = None, risk_free: float = 0.0
+    ) -> Performance:
+        """Sharpe and Sortino of :attr:`equity`; see :mod:`predictsim.stats`."""
+        return performance(self.equity, period_ns, periods_per_year, risk_free)
+
+    def trade_stats(self) -> TradeStats:
+        return trade_stats(self.round_trips)
+
 
 def max_drawdown(equity: list[tuple[int, int]]) -> int:
     peak: int | None = None
@@ -85,14 +119,22 @@ def max_drawdown(equity: list[tuple[int, int]]) -> int:
     return worst
 
 
-def _summarize(results: list[BacktestResult]) -> Summary:
+def _summarize(
+    results: list[BacktestResult],
+    curve: list[tuple[int, int]] | None = None,
+    used: int | None = None,
+) -> Summary:
+    """Summary of ``results``; portfolio mode passes its own combined
+    equity ``curve`` and the most shared cash ever ``used``."""
     fills = [f for r in results for f in r.fills]
     net = sum(r.net_pnl for r in results)
     fees = sum(r.total_fees for r in results)
     size = sum(f.size for f in fills)
     maker = sum(f.size for f in fills if f.is_maker)
-    used = max((r.initial_cash - r.min_cash for r in results), default=0)
-    curve = _chain([r.equity for r in results])
+    if used is None:
+        used = max((r.initial_cash - r.min_cash for r in results), default=0)
+    if curve is None:
+        curve = _chain([r.equity for r in results])
     return Summary(
         net_pnl=net,
         gross_pnl=net + fees,
